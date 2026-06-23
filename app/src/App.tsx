@@ -2,6 +2,8 @@ import { RouterProvider } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import voiceboxLogo from '@/assets/voicebox-logo.png';
 import { DictateWindow } from '@/components/DictateWindow/DictateWindow';
+import { AdminLoginModal } from '@/components/AdminLoginModal/AdminLoginModal';
+import { AdminPanel } from '@/components/AdminPanel/AdminPanel';
 import ShinyText from '@/components/ShinyText';
 import { TitleBarDragRegion } from '@/components/TitleBarDragRegion';
 import { useAutoUpdater } from '@/hooks/useAutoUpdater';
@@ -14,6 +16,7 @@ import { cn } from '@/lib/utils/cn';
 import { usePlatform } from '@/platform/PlatformContext';
 import { router } from '@/router';
 import { useLogStore } from '@/stores/logStore';
+import { useAdminStore } from '@/stores/adminStore';
 import {
   getDefaultServerUrl,
   isLoopbackVoiceboxServerUrl,
@@ -302,7 +305,13 @@ function MainApp() {
     );
   }
 
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <AdminLoginModal />
+      <AdminPanel />
+      <RouterProvider router={router} />
+    </>
+  );
 }
 
 export default App;

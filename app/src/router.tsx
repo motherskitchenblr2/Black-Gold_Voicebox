@@ -6,6 +6,7 @@ import {
   redirect,
 } from '@tanstack/react-router';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
+import { AIPlayground } from '@/components/AIPlayground/AIPlayground';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
 import { EffectsTab } from '@/components/EffectsTab/EffectsTab';
 import { MainEditor } from '@/components/MainEditor/MainEditor';
@@ -134,6 +135,13 @@ const modelsRoute = createRoute({
   component: ModelsTab,
 });
 
+// AI Playground route
+const aiPlaygroundRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/playground',
+  component: AIPlayground,
+});
+
 // Settings layout route (parent for sub-tabs)
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -207,6 +215,7 @@ const routeTree = rootRoute.addChildren([
   voicesRoute,
   effectsRoute,
   modelsRoute,
+  aiPlaygroundRoute,
   settingsRoute.addChildren([
     settingsGeneralRoute,
     settingsGenerationRoute,
