@@ -3,16 +3,30 @@
 
 This server provides the necessary API endpoints without heavy ML dependencies.
 Used for development and testing of the AI Provider integration UI.
+Includes autonomous agentic AI system with multimodal support.
 """
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import os
+import sys
+import hashlib
+import secrets
+
+# Add backend_agent to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from backend_agent import VoiceboxAgent, User, FileBasedStorage
+    AGENT_AVAILABLE = True
+except ImportError:
+    AGENT_AVAILABLE = False
+    print("Warning: Agent module not available, using basic functionality")
 
 # ============================================================================
 # Data Models
@@ -75,6 +89,67 @@ class AuditLog(BaseModel):
     details: Dict[str, Any] = {}
 
 
+# Agent Models
+class AgentInputRequest(BaseModel):
+    type: str  # 'text', 'voice', 'file', 'image'
+    content: str
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class AgentResponse(BaseModel):
+    status: str
+    type: str
+    message: str
+    provider_selected: Optional[str] = None
+    next_step: Optional[str] = None
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    is_admin: bool = False
+
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+    confirm_password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    email: Optional[str]
+    is_admin: bool
+    created_at: str
+    last_login: Optional[str]
+
+
+# ============================================================================
+# FastAPI Setup
+# ============================================================================
+
+app = FastAPI(
+    title="Voicebox AI Agent Platform",
+    description="Autonomous multimodal AI agent with voice, file, and document support",
+    version="1.0.0"
+)
+
+# CORS for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ============================================================================
 # In-Memory Storage
 # ============================================================================
@@ -89,6 +164,10 @@ PROVIDERS_CONFIG = {}
 USAGE_STATS = {}
 AUDIT_LOGS = []
 LOG_ID_COUNTER = 0
+
+# Initialize agent and file storage
+agent = VoiceboxAgent() if AGENT_AVAILABLE else None
+file_storage = FileBasedStorage() if AGENT_AVAILABLE else None
 
 # Available free providers
 AVAILABLE_PROVIDERS = {
@@ -499,16 +578,243 @@ def export_audit_logs(token: str):
 
 
 # ============================================================================
+# Agent Routes
+# ============================================================================
+
+@app.post("/agent/input", response_model=dict)
+async def process_agent_input(user_id: str, request: AgentInputRequest):
+    """Process multimodal input through the agent."""
+    if not AGENT_AVAILABLE or not agent:
+        return {
+            "status": "error",
+            "type": request.type,
+            "message": "Agent not available"
+        }
+    
+    input_data = {
+        'type': request.type,
+        'content': request.content,
+        **(request.metadata or {})
+    }
+    
+    result = agent.process_input(user_id, input_data)
+    
+    return {
+        "status": result.get('status', 'processed'),
+        "type": result.get('type', request.type),
+        "message": f"Processed {request.type} input",
+        "provider_selected": result.get('provider_selected'),
+        "next_step": result.get('next_step')
+    }
+
+
+@app.get("/agent/tools")
+async def get_agent_tools():
+    """Get list of available tools for the agent."""
+    if not AGENT_AVAILABLE or not agent:
+        return {"tools": []}
+    
+    return {"tools": agent.get_tools()}
+
+
+@app.post("/agent/orchestrate")
+async def orchestrate_providers(task: str, required_capabilities: List[str]):
+    """Use provider orchestration to select best provider."""
+    if not AGENT_AVAILABLE or not agent:
+        return {"status": "error", "message": "Agent not available"}
+    
+    result = agent.execute_tool('orchestrate_providers', {
+        'task': task,
+        'required_capabilities': required_capabilities,
+        'fallback_strategy': 'best_match'
+    })
+    
+    return result
+
+
+# ============================================================================
+# User Management Routes
+# ============================================================================
+
+@app.post("/users/create")
+async def create_user(request: UserCreateRequest):
+    """Create a new user."""
+    if not AGENT_AVAILABLE or not file_storage:
+        raise HTTPException(status_code=500, detail="Storage not available")
+    
+    # Check if user exists
+    existing = file_storage.get_user_by_username(request.username)
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Create user
+    user = User(
+        username=request.username,
+        password_hash=User.hash_password(request.password),
+        email=request.email or "",
+        is_admin=request.is_admin
+    )
+    
+    file_storage.save_user(user)
+    file_storage.save_audit_log("user_created", "system", {"username": request.username})
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "is_admin": user.is_admin,
+        "created_at": user.created_at,
+        "last_login": user.last_login
+    }
+
+
+@app.post("/users/login")
+async def login_user(request: UserLoginRequest):
+    """Login user and return session token."""
+    if not AGENT_AVAILABLE or not file_storage:
+        raise HTTPException(status_code=500, detail="Storage not available")
+    
+    user = file_storage.get_user_by_username(request.username)
+    if not user or not user.verify_password(request.password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Create session
+    token = secrets.token_urlsafe(32)
+    ACTIVE_SESSIONS[token] = {
+        'user_id': user.id,
+        'username': user.username,
+        'created_at': datetime.now(),
+        'expires_at': datetime.now() + timedelta(hours=24)
+    }
+    
+    file_storage.save_audit_log("user_login", user.id, {"username": user.username})
+    
+    return {
+        "status": "success",
+        "token": token,
+        "user_id": user.id,
+        "username": user.username,
+        "is_admin": user.is_admin
+    }
+
+
+@app.post("/users/change-password")
+async def change_password(user_id: str, request: PasswordChangeRequest):
+    """Change user password."""
+    if not AGENT_AVAILABLE or not file_storage:
+        raise HTTPException(status_code=500, detail="Storage not available")
+    
+    if request.new_password != request.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match")
+    
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    
+    user = file_storage.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user.verify_password(request.current_password):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    
+    # Update password
+    user.password_hash = User.hash_password(request.new_password)
+    file_storage.save_user(user)
+    file_storage.save_audit_log("password_changed", user_id, {"username": user.username})
+    
+    return {"status": "success", "message": "Password changed successfully"}
+
+
+@app.get("/users/list")
+async def list_users(admin_token: str):
+    """List all users (admin only)."""
+    if admin_token not in ACTIVE_SESSIONS:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    session = ACTIVE_SESSIONS[admin_token]
+    user = file_storage.get_user(session['user_id']) if AGENT_AVAILABLE else None
+    
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if not AGENT_AVAILABLE or not file_storage:
+        return {"users": []}
+    
+    # Read users from storage
+    with open(file_storage.users_file, 'r') as f:
+        users_data = json.load(f)
+    
+    users = []
+    for user_id, data in users_data.items():
+        users.append({
+            "id": user_id,
+            "username": data['username'],
+            "email": data.get('email'),
+            "is_admin": data.get('is_admin', False),
+            "created_at": data['created_at'],
+            "last_login": data.get('last_login')
+        })
+    
+    return {"users": users}
+
+
+# ============================================================================
+# File Management Routes
+# ============================================================================
+
+@app.post("/files/upload")
+async def upload_file(user_id: str, file: UploadFile = File(...)):
+    """Upload a file."""
+    if not AGENT_AVAILABLE or not file_storage:
+        raise HTTPException(status_code=500, detail="Storage not available")
+    
+    # Save file
+    upload_dir = os.path.join(file_storage.data_dir, "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_id = secrets.token_urlsafe(16)
+    file_path = os.path.join(upload_dir, f"{file_id}_{file.filename}")
+    
+    contents = await file.read()
+    with open(file_path, 'wb') as f:
+        f.write(contents)
+    
+    file_storage.save_audit_log("file_uploaded", user_id, {
+        "file_name": file.filename,
+        "file_size": len(contents),
+        "file_type": file.content_type
+    })
+    
+    return {
+        "status": "success",
+        "file_id": file_id,
+        "file_name": file.filename,
+        "file_size": len(contents),
+        "file_type": file.content_type
+    }
+
+
+@app.get("/files/list")
+async def list_user_files(user_id: str):
+    """List user's uploaded files."""
+    if not AGENT_AVAILABLE or not file_storage:
+        return {"files": []}
+    
+    return {"files": file_storage.get_user_files(user_id)}
+
+
+# ============================================================================
 # Server Startup
 # ============================================================================
 
 if __name__ == "__main__":
     port = int(os.getenv("BACKEND_PORT", 17493))
     print(f"\n{'='*60}")
-    print("🚀 Voicebox AI Integration Backend (Development)")
+    print("🚀 Voicebox AI Agent Platform (Development)")
     print(f"{'='*60}")
     print(f"Server starting on http://localhost:{port}")
     print(f"Admin credentials: Admin / Mobile@123")
+    print(f"Agent available: {AGENT_AVAILABLE}")
     print(f"{'='*60}\n")
     
     uvicorn.run(

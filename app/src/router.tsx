@@ -7,6 +7,8 @@ import {
 } from '@tanstack/react-router';
 import { AppFrame } from '@/components/AppFrame/AppFrame';
 import { AIPlayground } from '@/components/AIPlayground/AIPlayground';
+import { AgentChatInterface } from '@/components/AgentChat/AgentChatInterface';
+import { UserManagementPanel } from '@/components/UserManagement/UserManagementPanel';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
 import { EffectsTab } from '@/components/EffectsTab/EffectsTab';
 import { MainEditor } from '@/components/MainEditor/MainEditor';
@@ -142,6 +144,20 @@ const aiPlaygroundRoute = createRoute({
   component: AIPlayground,
 });
 
+// Agent Chat route
+const agentChatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/agent',
+  component: AgentChatInterface,
+});
+
+// User Management route
+const userManagementRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/users',
+  component: UserManagementPanel,
+});
+
 // Settings layout route (parent for sub-tabs)
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -216,6 +232,8 @@ const routeTree = rootRoute.addChildren([
   effectsRoute,
   modelsRoute,
   aiPlaygroundRoute,
+  agentChatRoute,
+  userManagementRoute,
   settingsRoute.addChildren([
     settingsGeneralRoute,
     settingsGenerationRoute,
