@@ -10,6 +10,7 @@ import { AIPlayground } from '@/components/AIPlayground/AIPlayground';
 import { AgentChatInterface } from '@/components/AgentChat/AgentChatInterface';
 import { UserManagementPanel } from '@/components/UserManagement/UserManagementPanel';
 import { FileManager } from '@/components/FileManagement/FileManager';
+import { ProvidersDashboard } from '@/components/ProvidersConfig/ProvidersDashboard';
 import { CapturesTab } from '@/components/CapturesTab/CapturesTab';
 import { EffectsTab } from '@/components/EffectsTab/EffectsTab';
 import { MainEditor } from '@/components/MainEditor/MainEditor';
@@ -164,6 +165,13 @@ const fileManagerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/files',
   component: FileManager,
+});
+
+// Providers Dashboard route
+const providersDashboardRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/providers',
+  component: ProvidersDashboard,
 });
 
 // Settings layout route (parent for sub-tabs)
