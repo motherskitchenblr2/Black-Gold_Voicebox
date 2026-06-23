@@ -11,7 +11,7 @@ export function AdminLoginModal() {
   // Listen for Ctrl+Shift+A to open login modal
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      if (e.ctrlKey && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
         e.preventDefault();
         setShowModal(true);
         setError('');
