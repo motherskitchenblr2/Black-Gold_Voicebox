@@ -1,5 +1,5 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { AudioLines, Box, Captions, type LucideIcon, Mic, Settings, Volume2, Wand2, Zap, MessageSquare, Users, Folder } from 'lucide-react';
+import { AudioLines, Box, Captions, type LucideIcon, Mic, Settings, Volume2, Wand2, Zap, MessageSquare, Users, Folder, Cpu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import voiceboxLogo from '@/assets/voicebox-logo.png';
@@ -30,6 +30,7 @@ const tabs: Array<{
   { id: 'agent', path: '/agent', icon: MessageSquare, label: 'AI Agent' },
   { id: 'users', path: '/users', icon: Users, label: 'Users' },
   { id: 'files', path: '/files', icon: Folder, label: 'Files' },
+  { id: 'providers', path: '/providers', icon: Cpu, label: 'Providers' },
   { id: 'settings', path: '/settings', icon: Settings, labelKey: 'nav.settings' },
 ];
 
